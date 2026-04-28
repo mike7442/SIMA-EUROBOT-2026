@@ -7,7 +7,7 @@
 #define MOTOR_LEFT_PWM 11  // ШИМ
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   // Настраиваем пины как выходы
   pinMode(MOTOR_RIGHT_IN1, OUTPUT);
