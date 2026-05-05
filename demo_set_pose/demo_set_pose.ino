@@ -21,7 +21,7 @@
 // =========================
 #define TICKS_PER_REV 1000      // Количество импульсов на оборот колеса
 #define WHEEL_DIAMETER 0.0445    // Диаметр колеса в метрах (65 мм)
-#define WHEEL_BASE 0.18         // Расстояние между колесами в метрах (180 мм)
+#define WHEEL_BASE 0.095         // Расстояние между колесами в метрах (180 мм)
 #define WHEEL_CIRCUMFERENCE (WHEEL_DIAMETER * PI)
 
 // =========================
@@ -39,31 +39,48 @@ volatile long encoderLeftPos = 0;
 volatile long encoderRightPos = 0;
 
 // П-регулятор
-float KP_LINEAR = 100.0;    // коэффициент для линейной скорости
-float KP_ANGULAR = 80.0;    // коэффициент для угловой скорости
+float KP_LINEAR = 200.0;    // коэффициент для линейной скорости
+float KP_ANGULAR = 160.0;    // коэффициент для угловой скорости
 float DISTANCE_THRESHOLD = 0.05;  // 5 см
 float ANGLE_THRESHOLD_RAD = 0.05; // ~3 градуса
 bool movingToTarget = true;
 
 // Целевые координаты (задаются в setup)
 float targetX = 0.10; // 1 метр по X
-float targetY = 0.2; // 0.5 метра по Y
-float targetTheta = 1.57; // 90 градусов в радианах
+float targetY = 0.0; // 0.5 метра по Y
+float targetTheta = 0; // 90 градусов в радианах
 
 // =========================
 // ФУНКЦИИ УПРАВЛЕНИЯ МОТОРАМИ
 // =========================
+
+
+
+const int MIN_SPEED_THRESHOLD = 50; // Минимальное значение ШИМ, при котором мотор крутится
+
+int applyDeadZoneCompensation(int speed) {
+  if (speed == 0) return 0;
+
+  if (abs(speed) < MIN_SPEED_THRESHOLD) {
+    if (speed > 0) {
+      return MIN_SPEED_THRESHOLD;
+    } else {
+      return -MIN_SPEED_THRESHOLD;
+    }
+  }
+  return speed; // Если больше порога — оставляем как есть
+}
+
 void setMotorSpeed(int inPin, int pwmPin, int speed) {
+  speed = applyDeadZoneCompensation(speed); // Применяем коррекцию
+
   if (speed > 0) {
-    // Вращение вперёд
     digitalWrite(inPin, HIGH);
     analogWrite(pwmPin, 255 - abs(speed));  // ⚠️ Обратная логика
   } else if (speed < 0) {
-    // Вращение назад
     digitalWrite(inPin, LOW);
-    analogWrite(pwmPin, abs(speed)); // подаём модуль скорости
+    analogWrite(pwmPin, abs(speed));
   } else { // speed == 0
-    // Остановка
     digitalWrite(inPin, LOW);
     analogWrite(pwmPin, 0);
   }
