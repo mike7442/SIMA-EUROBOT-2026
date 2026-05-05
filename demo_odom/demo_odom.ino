@@ -9,9 +9,9 @@ volatile long encoderLeftPos = 0;
 volatile long encoderRightPos = 0;
 
 // Параметры для одометрии (КАЛИБРИРОВАТЬ!)
-#define TICKS_PER_REV 1000      // Количество импульсов на оборот колеса
-#define WHEEL_DIAMETER 0.065    // Диаметр колеса в метрах (65 мм)
-#define WHEEL_BASE 0.18         // Расстояние между колесами в метрах (180 мм)
+#define TICKS_PER_REV 1450      // Количество импульсов на оборот колеса
+#define WHEEL_DIAMETER 0.0445    // Диаметр колеса в метрах (65 мм)
+#define WHEEL_BASE 0.105        // Расстояние между колесами в метрах (180 мм)
 #define WHEEL_CIRCUMFERENCE (WHEEL_DIAMETER * PI)
 
 // Переменные для одометрии
