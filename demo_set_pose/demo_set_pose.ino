@@ -1,6 +1,4 @@
-#include <Arduino.h>
-
-// =========================
+#define LOGG 
 // ПИНЫ ДЛЯ МОТОРОВ
 // =========================
 #define MOTOR_LEFT_IN1 8
@@ -11,76 +9,79 @@
 // =========================
 // ПИНЫ ДЛЯ ЭНКОДЕРОВ
 // =========================
-#define ENCODER_LEFT_A    2 // INT0
-#define ENCODER_LEFT_B    4
-#define ENCODER_RIGHT_A   3 // INT1
-#define ENCODER_RIGHT_B   5
+#define ENCODER_LEFT_A 2  // INT0
+#define ENCODER_LEFT_B 4
+#define ENCODER_RIGHT_A 3  // INT1
+#define ENCODER_RIGHT_B 5
 
 // =========================
 // ПАРАМЕТРЫ ОДОМЕТРИИ (КАЛИБРИРОВАТЬ!)
 // =========================
-#define TICKS_PER_REV 1000      // Количество импульсов на оборот колеса
-#define WHEEL_DIAMETER 0.0445    // Диаметр колеса в метрах (65 мм)
-#define WHEEL_BASE 0.095         // Расстояние между колесами в метрах (180 мм)
+#define TICKS_PER_REV 1450     // Количество импульсов на оборот колеса
+#define WHEEL_DIAMETER 0.0445  // Диаметр колеса в метрах (65 мм)
+#define WHEEL_BASE 0.095       // Расстояние между колесами в метрах (180 мм)
 #define WHEEL_CIRCUMFERENCE (WHEEL_DIAMETER * PI)
 
 // =========================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
 // =========================
 // Одометрия
-float x = 0.0;           // Позиция по X в метрах
-float y = 0.0;           // Позиция по Y в метрах
-float theta = 0.0;       // Ориентация в радианах (0 = вдоль оси X)
-long prevLeftPos = 0;    // Предыдущее значение левого энкодера
-long prevRightPos = 0;   // Предыдущее значение правого энкодера
+float x = 0.0;          // Позиция по X в метрах
+float y = 0.0;          // Позиция по Y в метрах
+float theta = 0.0;      // Ориентация в радианах (0 = вдоль оси X)
+long prevLeftPos = 0;   // Предыдущее значение левого энкодера
+long prevRightPos = 0;  // Предыдущее значение правого энкодера
 
 // Энкодеры
 volatile long encoderLeftPos = 0;
 volatile long encoderRightPos = 0;
 
 // П-регулятор
-float KP_LINEAR = 200.0;    // коэффициент для линейной скорости
-float KP_ANGULAR = 160.0;    // коэффициент для угловой скорости
-float DISTANCE_THRESHOLD = 0.05;  // 5 см
-float ANGLE_THRESHOLD_RAD = 0.05; // ~3 градуса
+float KP_LINEAR = 200.0;           // коэффициент для линейной скорости
+float KP_ANGULAR = 20.0;           // коэффициент для угловой скорости
+float DISTANCE_THRESHOLD = 0.005;  // 5 см
+float ANGLE_THRESHOLD_RAD = 0.05;  // ~3 градуса
 bool movingToTarget = true;
+uint8_t kff = 30;
 
 // Целевые координаты (задаются в setup)
-float targetX = 0.10; // 1 метр по X
-float targetY = 0.0; // 0.5 метра по Y
-float targetTheta = 0; // 90 градусов в радианах
+float targetX = 0.0;     // 1 метр по X
+float targetY = 0.0;      // 0.5 метра по Y
+float targetTheta = PI;  // 90 градусов в радианах
 
 // =========================
 // ФУНКЦИИ УПРАВЛЕНИЯ МОТОРАМИ
 // =========================
 
+unsigned long timer_cycle = 0;
 
-
-const int MIN_SPEED_THRESHOLD = 50; // Минимальное значение ШИМ, при котором мотор крутится
+const int MIN_SPEED_THRESHOLD = 50;  // Минимальное значение ШИМ, при котором мотор крутится
 
 int applyDeadZoneCompensation(int speed) {
   if (speed == 0) return 0;
-
-  if (abs(speed) < MIN_SPEED_THRESHOLD) {
+  else {
     if (speed > 0) {
-      return MIN_SPEED_THRESHOLD;
-    } else {
-      return -MIN_SPEED_THRESHOLD;
+      speed += kff;
+      return speed;
+    } else if (speed < 0) {
+      speed -= kff;
+      return speed;
     }
   }
-  return speed; // Если больше порога — оставляем как есть
 }
 
 void setMotorSpeed(int inPin, int pwmPin, int speed) {
-  speed = applyDeadZoneCompensation(speed); // Применяем коррекцию
-
+  speed = constrain(applyDeadZoneCompensation(speed),-255,255);  // Применяем коррекцию
   if (speed > 0) {
+    // Вращение вперёд
     digitalWrite(inPin, HIGH);
-    analogWrite(pwmPin, 255 - abs(speed));  // ⚠️ Обратная логика
+    analogWrite(pwmPin, 255 - speed);  // ⚠️ Обратная логика
   } else if (speed < 0) {
+    // Вращение назад
     digitalWrite(inPin, LOW);
-    analogWrite(pwmPin, abs(speed));
-  } else { // speed == 0
+    analogWrite(pwmPin, -speed);  // подаём модуль скорости
+  } else {                        // speed == 0
+    // Остановка
     digitalWrite(inPin, LOW);
     analogWrite(pwmPin, 0);
   }
@@ -98,29 +99,37 @@ void updateOdometry() {
   // Получаем текущие показания энкодеров
   long currentLeftPos = encoderLeftPos;
   long currentRightPos = encoderRightPos;
+
   // Вычисляем изменения показаний энкодеров
   long deltaLeft = currentLeftPos - prevLeftPos;
   long deltaRight = currentRightPos - prevRightPos;
+
   // Сохраняем текущие позиции для следующего обновления
   prevLeftPos = currentLeftPos;
   prevRightPos = currentRightPos;
+
   // Конвертируем показания энкодеров в пройденное расстояние (метры)
   float distanceLeft = (deltaLeft * WHEEL_CIRCUMFERENCE) / TICKS_PER_REV;
   float distanceRight = (deltaRight * WHEEL_CIRCUMFERENCE) / TICKS_PER_REV;
+
   // Вычисляем среднее пройденное расстояние
   float deltaDistance = (distanceLeft + distanceRight) / 2.0;
+
   // Вычисляем изменение угла
   float deltaTheta = (distanceRight - distanceLeft) / WHEEL_BASE;
+
   // Обновляем ориентацию
   theta += deltaTheta;
+
   // Нормализуем угол в диапазон [-PI, PI]
   if (theta > PI) theta -= 2 * PI;
   if (theta < -PI) theta += 2 * PI;
+
   // Обновляем позицию
-  if (abs(deltaTheta) < 0.001) { // Прямолинейное движение (почти)
+  if (abs(deltaTheta) < 0.001) {  // Прямолинейное движение (почти)
     x += deltaDistance * cos(theta);
     y += deltaDistance * sin(theta);
-  } else { // Движение по дуге
+  } else {  // Движение по дуге
     float radius = deltaDistance / deltaTheta;
     x += radius * (sin(theta + deltaTheta) - sin(theta));
     y += radius * (-cos(theta + deltaTheta) + cos(theta));
@@ -136,23 +145,32 @@ void resetOdometry() {
   prevLeftPos = 0;
   prevRightPos = 0;
 }
-
+#ifdef LOGG 
+void printOdometry() {
+  // Выводим ТОЛЬКО координаты и угол в компактном CSV формате
+  Serial.print(x * 100, 1);  // X в сантиметрах
+  Serial.print(",");
+  Serial.print(y * 100, 1);  // Y в сантиметрах
+  Serial.print(",");
+  Serial.println(theta * 180.0 / PI, 1);  // Угол в градусах
+}
+#endif
 // =========================
 // ФУНКЦИИ ДЛЯ ЭНКОДЕРОВ
 // =========================
 void updateEncoderLeft() {
   if (digitalRead(ENCODER_LEFT_B) == HIGH) {
-    encoderLeftPos++; // вращение вперёд
+    encoderLeftPos++;  // вращение вперёд
   } else {
-    encoderLeftPos--; // вращение назад
+    encoderLeftPos--;  // вращение назад
   }
 }
 
 void updateEncoderRight() {
   if (digitalRead(ENCODER_RIGHT_B) == HIGH) {
-    encoderRightPos++; // вращение вперёд
+    encoderRightPos++;  // вращение вперёд
   } else {
-    encoderRightPos--; // вращение назад
+    encoderRightPos--;  // вращение назад
   }
 }
 
@@ -169,10 +187,16 @@ void goToPose() {
   float dy = targetY - y;
   float distance = sqrt(dx * dx + dy * dy);
 
+  // Serial.print(dx);
+  // Serial.print("   ");
+  // Serial.print(dy);
+  // Serial.print("   ");
+  // Serial.println(distance);
+
   if (movingToTarget) {
     // --- Движение к точке ---
     if (distance <= DISTANCE_THRESHOLD) {
-      movingToTarget = false; // Переходим к повороту
+      movingToTarget = false;  // Переходим к повороту
       return;
     }
 
@@ -194,13 +218,15 @@ void goToPose() {
     float angularCorrection = KP_ANGULAR * angleError;
 
     // Ограничиваем максимальную скорость
-    linearSpeed = constrain(linearSpeed, -255, 255);
-    angularCorrection = constrain(angularCorrection, -100, 100); // Ограничиваем коррекцию
+    linearSpeed = constrain(linearSpeed, -255+2*kff, 255-2*kff);
+    angularCorrection = constrain(angularCorrection, -100, 100);  // Ограничиваем коррекцию
 
     // Устанавливаем скорости моторов (дифференциальное управление)
     float leftSpeed = linearSpeed - angularCorrection;
     float rightSpeed = linearSpeed + angularCorrection;
-
+    // Serial.print(rightSpeed);
+    // Serial.print("   ");
+    // Serial.println(leftSpeed);
     setMotorSpeed(MOTOR_LEFT_IN1, MOTOR_LEFT_PWM, constrain(leftSpeed, -255, 255));
     setMotorSpeed(MOTOR_RIGHT_IN1, MOTOR_RIGHT_PWM, constrain(rightSpeed, -255, 255));
 
@@ -210,14 +236,14 @@ void goToPose() {
     normalizeAngle(angleError);
 
     if (abs(angleError) <= ANGLE_THRESHOLD_RAD) {
-      stopMotors(); // Доехали и повернули — останавливаемся
+      stopMotors();  // Доехали и повернули — останавливаемся
       Serial.println("Goal reached!");
       return;
     }
 
     float angularSpeed = KP_ANGULAR * angleError;
-    angularSpeed = constrain(angularSpeed, -200, 200); // Ограничиваем скорость поворота
-
+    angularSpeed = applyDeadZoneCompensation(constrain(angularSpeed, -200, 200));  // Ограничиваем скорость поворота
+    
     // Устанавливаем скорости моторов для поворота
     setMotorSpeed(MOTOR_LEFT_IN1, MOTOR_LEFT_PWM, -angularSpeed);
     setMotorSpeed(MOTOR_RIGHT_IN1, MOTOR_RIGHT_PWM, angularSpeed);
@@ -260,27 +286,28 @@ void setup() {
   // --- ЗАПУСК П-РЕГУЛЯТОРА ---
   // Этот цикл будет работать до тех пор, пока не достигнем цели
   while (true) {
-    // Обновляем одометрию
-    updateOdometry();
+    if (millis() - timer_cycle >= 10) {
+      updateOdometry();
+      #ifdef LOGG
+      printOdometry();
+      #endif
+      // Вызываем функцию П-регулятора
+      goToPose();
 
-    // Вызываем функцию П-регулятора
-    goToPose();
+      // Проверяем, достигли ли мы цели
+      float dx = targetX - x;
+      float dy = targetY - y;
+      float distance = sqrt(dx * dx + dy * dy);
+      float angleError = targetTheta - theta;
+      normalizeAngle(angleError);
 
-    // Маленькая задержка для стабильности
-    delay(10);
-
-    // Проверяем, достигли ли мы цели
-    float dx = targetX - x;
-    float dy = targetY - y;
-    float distance = sqrt(dx * dx + dy * dy);
-    float angleError = targetTheta - theta;
-    normalizeAngle(angleError);
-
-    if (distance <= DISTANCE_THRESHOLD && !movingToTarget && abs(angleError) <= ANGLE_THRESHOLD_RAD) {
-      break; // Выходим из цикла, когда цель достигнута
+      if (distance <= DISTANCE_THRESHOLD && !movingToTarget && abs(angleError) <= ANGLE_THRESHOLD_RAD) {
+        stopMotors();
+        break;  // Выходим из цикла, когда цель достигнута
+      }
+      timer_cycle = millis();
     }
   }
-  // После завершения цикла моторы остановлены, выполнение завершено
 }
 
 // =========================
