@@ -46,8 +46,8 @@ bool movingToTarget = true;
 uint8_t kff = 30;
 
 // Целевые координаты (задаются в setup)
-float targetX = 1.0;     // 1 метр по X
-float targetY = 0.0;      // 0.5 метра по Y
+float targetX = 0.70;     // 1 метр по X
+float targetY = -0.90;      // 0.5 метра по Y
 float targetTheta = PI;  // 90 градусов в радианах
 
 // =========================
