@@ -30,8 +30,8 @@ if not ARDUINO_PORT:
 # --- Переменные для GUI ---
 # PID коэффициенты по умолчанию (увеличенные для работы с малыми скоростями и большими ШИМ)
 default_values = {
-    'left': {'p': 100.0, 'i': 0.0, 'd': 0.0, 'kff': 1.0}, # Примерно 100 для P
-    'right': {'p': 100.0, 'i': 0.0, 'd': 0.0, 'kff': 1.0},
+    'left': {'p': 100.0, 'i': 0.0, 'd': 0.0, 'kff': 1000.0}, # Примерно 100 для P, kff как feedforward коэффициент (m/s -> PWM)
+    'right': {'p': 100.0, 'i': 0.0, 'd': 0.0, 'kff': 1000.0},
     'velocities': {'linear': 0.0, 'angular': 0.0}
 }
 
@@ -48,6 +48,7 @@ left_target_buffer = deque(maxlen=MAX_DATA_POINTS)
 left_current_buffer = deque(maxlen=MAX_DATA_POINTS)
 right_target_buffer = deque(maxlen=MAX_DATA_POINTS)
 right_current_buffer = deque(maxlen=MAX_DATA_POINTS)
+start_time = time.time()
 
 # --- ПЕРЕМЕННЫЕ ДЛЯ PID И ЦЕЛЕВЫХ СКОРОСТЕЙ ---
 # Для упрощения, будем рассчитывать требуемый ШИМ на стороне Python
@@ -72,6 +73,9 @@ kff_r = default_values['right']['kff']
 error_history_left = {'p': 0, 'i': 0, 'd': 0, 'prev_time': time.time()}
 error_history_right = {'p': 0, 'i': 0, 'd': 0, 'prev_time': time.time()}
 
+# Флаг синхронизации моторов
+sync_motors_enabled = False
+
 # Параметры робота
 WHEEL_BASE_PYTHON = 0.105 # м # Используем значение из Arduino-скетча
 # SPEED_TO_PWM_FACTOR_PYTHON не используется напрямую в PID, только для feedforward если нужно
@@ -86,7 +90,10 @@ def send_command(cmd_str):
         # print(f"Отправлено: {full_cmd.strip()}") # Для отладки
 
 # --- Функция для вычисления ШИМ по PID ---
-def calculate_pwm_output(error, last_error, integral, derivative, dt, kp, ki, kd, kff, max_pwm=MAX_PWM_OUTPUT):
+def calculate_pwm_output(error, last_error, integral, derivative, dt, kp, ki, kd, kff, target_speed, max_pwm=MAX_PWM_OUTPUT):
+    # Feedforward: переводим целевую скорость в PWM
+    ff_term = kff * target_speed
+
     # P (Пропорциональная)
     p_term = kp * error
     
@@ -104,19 +111,10 @@ def calculate_pwm_output(error, last_error, integral, derivative, dt, kp, ki, kd
     # derivative уже передаётся как (error - last_error) / dt
     d_term = kd * derivative
     
-    output = p_term + i_term + d_term
-    
-    # Feedforward (простая компенсация мертвой зоны)
-    # kff_l/r теперь просто добавляется к положительному или отрицательному ШИМ
-    # Применяем kff к общему выходу
-    sign_output = 1 if output > 0 else (-1 if output < 0 else 0)
-    output += sign_output * kff
+    output = ff_term + p_term + i_term + d_term
     
     # Ограничение ШИМ
     output = max(min(output, max_pwm), -max_pwm)
-    
-    # Умножаем на kff как коэффициент компенсации трения
-    output *= kff
     
     return output, new_integral, derivative # Возвращаем также обновленную производную
 
@@ -136,10 +134,22 @@ def update_arduino_settings():
     Kd_l = scale_left_d.get()
     kff_l = scale_left_kff.get()
     
-    Kp_r = scale_right_p.get()
-    Ki_r = scale_right_i.get()
-    Kd_r = scale_right_d.get()
-    kff_r = scale_right_kff.get()
+    # Если синхронизация включена, копируем левые значения направо
+    if sync_motors_enabled:
+        Kp_r = Kp_l
+        Ki_r = Ki_l
+        Kd_r = Kd_l
+        kff_r = kff_l
+        # Обновляем ползунки правого мотора
+        scale_right_p.set(Kp_l)
+        scale_right_i.set(Ki_l)
+        scale_right_d.set(Kd_l)
+        scale_right_kff.set(kff_l)
+    else:
+        Kp_r = scale_right_p.get()
+        Ki_r = scale_right_i.get()
+        Kd_r = scale_right_d.get()
+        kff_r = scale_right_kff.get()
 
     # Вычисляем целевые скорости колёс
     target_left_wheel_speed = target_linear_vel - (target_angular_vel * WHEEL_BASE_PYTHON / 2.0)
@@ -164,11 +174,11 @@ def update_arduino_settings():
     # Вычисляем ШИМ с помощью PID
     pwm_left, new_int_left, new_deriv_left = calculate_pwm_output(
         error_left, error_history_left['p'], error_history_left['i'], error_history_left['d'], dt_left,
-        Kp_l, Ki_l, Kd_l, kff_l
+        Kp_l, Ki_l, Kd_l, kff_l, target_left_wheel_speed
     )
     pwm_right, new_int_right, new_deriv_right = calculate_pwm_output(
         error_right, error_history_right['p'], error_history_right['i'], error_history_right['d'], dt_right,
-        Kp_r, Ki_r, Kd_r, kff_r
+        Kp_r, Ki_r, Kd_r, kff_r, target_right_wheel_speed
     )
 
     # Обновляем историю ошибок
@@ -178,12 +188,6 @@ def update_arduino_settings():
     # Отправляем ШИМ-команды на Arduino
     send_command(f"0,{int(pwm_left)}")
     send_command(f"1,{int(pwm_right)}")
-
-    # Также обновляем буферы целевой скорости для графика (для отладки)
-    # Используем последнее время из time_buffer или текущее, если буфер пуст
-    plot_time = time_buffer[-1] if time_buffer else current_time
-    left_target_buffer.append(target_left_wheel_speed)
-    right_target_buffer.append(target_right_wheel_speed)
 
 
 # --- Функция для обработки данных Serial в отдельном потоке ---
@@ -217,64 +221,48 @@ def update_plots():
         global time_buffer, left_target_buffer, left_current_buffer, right_target_buffer, right_current_buffer
         global update_timer_id # Объявляем глобальной
 
+        current_time = time.time() - start_time
+
+        current_left = left_current_buffer[-1] if left_current_buffer else 0.0
+        current_right = right_current_buffer[-1] if right_current_buffer else 0.0
+
         # Обработать все данные из очереди
         while not data_queue.empty():
             try:
                 line = data_queue.get_nowait()
-                # Парсим строку с текущими скоростями
-                # Ожидаем формат: "currentLeftWheelSpeed,currentRightWheelSpeed"
-                # match = re.match(r'^([+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?)\s*,\s*([+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?)$', line)
                 parts = line.split(',')
                 if len(parts) == 2:
                      try:
                          current_left = float(parts[0])
                          current_right = float(parts[1])
-                         
-                         # Вычисляем целевые скорости на основе линейной и угловой (для отображения на графике)
-                         # Используем текущие значения из GUI или переменных
-                         v_linear = target_linear_vel # scale_linear.get() # Используем глобальную переменную
-                         v_angular = target_angular_vel # scale_angular.get() # Используем глобальную переменную
-                         
-                         target_left_calc = v_linear - (v_angular * WHEEL_BASE_PYTHON / 2.0)
-                         target_right_calc = v_linear + (v_angular * WHEEL_BASE_PYTHON / 2.0)
-
-                         # Добавляем в буферы
-                         current_time = time.time()
-                         time_buffer.append(current_time)
-                         # left_target_buffer.append(target_left_calc) # Заменено на обновление в update_arduino_settings
-                         # right_target_buffer.append(target_right_calc) # Заменено на обновление в update_arduino_settings
-                         left_current_buffer.append(current_left)
-                         right_current_buffer.append(current_right)
                      except ValueError:
-                         # Если не получилось распарсить числа
                          pass
             except queue.Empty:
-                pass # Ничего не делаем, если очередь пуста
+                pass
 
-        # Обновляем буферы целевой скорости для графика (теперь всегда обновляется, даже если не было новых данных от Serial)
-        # Это нужно, чтобы график целевой скорости был актуален
-        if time_buffer: # Проверяем, что буфер времени не пуст
-            current_time = time_buffer[-1] # Берём последнее время
-            v_linear = target_linear_vel
-            v_angular = target_angular_vel
-            target_left_calc = v_linear - (v_angular * WHEEL_BASE_PYTHON / 2.0)
-            target_right_calc = v_linear + (v_angular * WHEEL_BASE_PYTHON / 2.0)
-            # Обновляем только последнее значение в буфере целевой скорости, если время совпадает
-            # Или добавляем новое, если буферы целевой скорости короче
-            if len(left_target_buffer) < len(time_buffer):
-                 # Если буфер целевой скорости короче, добавляем новое значение
-                 left_target_buffer.append(target_left_calc)
-                 right_target_buffer.append(target_right_calc)
-            elif len(left_target_buffer) == len(time_buffer):
-                 # Если длины совпадают, обновляем последнее значение
-                 left_target_buffer[-1] = target_left_calc
-                 right_target_buffer[-1] = target_right_calc
-            # else: # Если буфер целевой скорости длиннее - не должно происходить при maxlen
+        # Всегда добавляем метку времени и целевые значения, чтобы ось времени шла равномерно
+        time_buffer.append(current_time)
+        v_linear = target_linear_vel
+        v_angular = target_angular_vel
+        target_left_calc = v_linear - (v_angular * WHEEL_BASE_PYTHON / 2.0)
+        target_right_calc = v_linear + (v_angular * WHEEL_BASE_PYTHON / 2.0)
+        left_target_buffer.append(target_left_calc)
+        right_target_buffer.append(target_right_calc)
+        left_current_buffer.append(current_left)
+        right_current_buffer.append(current_right)
 
 
         # Обновляем графики
         ax1.clear()
         ax1.set_ylim(-0.5, 0.5)  # Фиксированный диапазон скорости
+        max_window = 10.0
+        if time_buffer:
+            current_time = time_buffer[-1]
+            if current_time < max_window:
+                ax1.set_xlim(0, max_window)
+            else:
+                ax1.set_xlim(current_time - max_window, current_time)
+        ax1.xaxis.set_major_locator(plt.MaxNLocator(6))
         plotted_left = False # Флаг для левой оси
         if len(time_buffer) > 0:
             # Убедимся, что длины совпадают перед отрисовкой
@@ -296,6 +284,13 @@ def update_plots():
 
         ax2.clear()
         ax2.set_ylim(-0.5, 0.5)  # Фиксированный диапазон скорости
+        if time_buffer:
+            current_time = time_buffer[-1]
+            if current_time < max_window:
+                ax2.set_xlim(0, max_window)
+            else:
+                ax2.set_xlim(current_time - max_window, current_time)
+        ax2.xaxis.set_major_locator(plt.MaxNLocator(6))
         plotted_right = False # Флаг для правой оси
         if len(time_buffer) > 0:
             # Убедимся, что длины совпадают перед отрисовкой
@@ -348,7 +343,7 @@ scale_left_p = tk.Scale(frame_sliders, from_=0, to=2000, resolution=1.0, orient=
 scale_left_p.set(default_values['left']['p'])
 scale_left_p.grid(row=1, column=0, padx=5, pady=5)
 
-scale_left_i = tk.Scale(frame_sliders, from_=0, to=500, resolution=0.1, orient=tk.HORIZONTAL, label="I (0-500)", length=200)
+scale_left_i = tk.Scale(frame_sliders, from_=0, to=2000, resolution=0.1, orient=tk.HORIZONTAL, label="I (0-2000)", length=200)
 scale_left_i.set(default_values['left']['i'])
 scale_left_i.grid(row=1, column=1, padx=5, pady=5)
 
@@ -356,13 +351,13 @@ scale_left_d = tk.Scale(frame_sliders, from_=0, to=500, resolution=0.1, orient=t
 scale_left_d.set(default_values['left']['d'])
 scale_left_d.grid(row=2, column=0, padx=5, pady=5)
 
-scale_left_kff = tk.Scale(frame_sliders, from_=0.0, to=2.0, resolution=0.01, orient=tk.HORIZONTAL, label="kff (0.0-2.0)", length=200)
+scale_left_kff = tk.Scale(frame_sliders, from_=0.0, to=2000.0, resolution=1.0, orient=tk.HORIZONTAL, label="kff (m/s -> PWM)", length=200)
 scale_left_kff.set(default_values['left']['kff'])
 scale_left_kff.grid(row=2, column=1, padx=5, pady=5)
 
 # Правый мотор
 ttk.Label(frame_sliders, text="RIGHT MOTOR").grid(row=0, column=2, columnspan=2, sticky="w")
-scale_right_p = tk.Scale(frame_sliders, from_=0, to=2000, resolution=1.0, orient=tk.HORIZONTAL, label="P (0-2000)", length=200)
+scale_right_p = tk.Scale(frame_sliders, from_=0, to=2000, resolution=1.0, orient=tk.HORIZONTAL, label="P (0-2000)", length=200, state="normal")
 scale_right_p.set(default_values['right']['p'])
 scale_right_p.grid(row=1, column=2, padx=5, pady=5)
 
@@ -374,7 +369,7 @@ scale_right_d = tk.Scale(frame_sliders, from_=0, to=500, resolution=0.1, orient=
 scale_right_d.set(default_values['right']['d'])
 scale_right_d.grid(row=2, column=2, padx=5, pady=5)
 
-scale_right_kff = tk.Scale(frame_sliders, from_=0.0, to=2.0, resolution=0.01, orient=tk.HORIZONTAL, label="kff (0.0-2.0)", length=200)
+scale_right_kff = tk.Scale(frame_sliders, from_=0.0, to=2000.0, resolution=1.0, orient=tk.HORIZONTAL, label="kff (m/s -> PWM)", length=200)
 scale_right_kff.set(default_values['right']['kff'])
 scale_right_kff.grid(row=2, column=3, padx=5, pady=5)
 
@@ -395,10 +390,25 @@ btn_reset_linear.grid(row=5, column=0, padx=5, pady=5)
 btn_reset_angular = ttk.Button(frame_sliders, text="Reset Angular", command=lambda: scale_angular.set(0.0))
 btn_reset_angular.grid(row=5, column=1, padx=5, pady=5)
 
+# Переключатель синхронизации моторов
+def toggle_sync_motors():
+    global sync_motors_enabled
+    sync_motors_enabled = var_sync_motors.get()
+    if sync_motors_enabled:
+        # При включении синхронизации копируем значения левого на правый
+        scale_right_p.set(scale_left_p.get())
+        scale_right_i.set(scale_left_i.get())
+        scale_right_d.set(scale_left_d.get())
+        scale_right_kff.set(scale_left_kff.get())
+
+var_sync_motors = tk.BooleanVar(value=False)
+chk_sync_motors = ttk.Checkbutton(frame_sliders, text="Sync Motors (Left → Right)", variable=var_sync_motors, command=toggle_sync_motors)
+chk_sync_motors.grid(row=5, column=2, columnspan=2, padx=5, pady=5, sticky="w")
+
 # Кнопка для отправки (теперь не нужна, так как отправка идёт в update_plots)
 # btn_update = ttk.Button(frame_sliders, text="Update Arduino", command=update_arduino_settings)
 # btn_update.grid(row=5, column=0, columnspan=4, pady=10)
-ttk.Label(frame_sliders, text="Adjust sliders to tune PID. P/I/D should be much larger than before.").grid(row=6, column=0, columnspan=4, pady=5)
+ttk.Label(frame_sliders, text="Adjust sliders to tune PID. P/I/D should be much larger than before.").grid(row=7, column=0, columnspan=4, pady=5)
 
 # --- Графики Matplotlib ---
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
