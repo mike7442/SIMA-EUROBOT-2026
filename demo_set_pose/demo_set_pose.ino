@@ -17,7 +17,8 @@
 // =========================
 // ПАРАМЕТРЫ ОДОМЕТРИИ (КАЛИБРИРОВАТЬ!)
 // =========================
-#define TICKS_PER_REV 1450     // Количество импульсов на оборот колеса
+#define LEFT_TICKS_PER_REV 1360     // Количество импульсов на оборот колеса
+#define RIGHT_TICKS_PER_REV 1472    
 #define WHEEL_DIAMETER 0.0445  // Диаметр колеса в метрах (65 мм)
 #define WHEEL_BASE 0.095       // Расстояние между колесами в метрах (180 мм)
 #define WHEEL_CIRCUMFERENCE (WHEEL_DIAMETER * PI)
@@ -37,15 +38,15 @@ volatile long encoderLeftPos = 0;
 volatile long encoderRightPos = 0;
 
 // П-регулятор
-float KP_LINEAR = 200.0;           // коэффициент для линейной скорости
-float KP_ANGULAR = 20.0;           // коэффициент для угловой скорости
+float KP_LINEAR = 120.0;           // коэффициент для линейной скорости
+float KP_ANGULAR = 60.0;           // коэффициент для угловой скорости
 float DISTANCE_THRESHOLD = 0.005;  // 5 см
 float ANGLE_THRESHOLD_RAD = 0.05;  // ~3 градуса
 bool movingToTarget = true;
 uint8_t kff = 30;
 
 // Целевые координаты (задаются в setup)
-float targetX = 0.0;     // 1 метр по X
+float targetX = 1.0;     // 1 метр по X
 float targetY = 0.0;      // 0.5 метра по Y
 float targetTheta = PI;  // 90 градусов в радианах
 
@@ -109,8 +110,9 @@ void updateOdometry() {
   prevRightPos = currentRightPos;
 
   // Конвертируем показания энкодеров в пройденное расстояние (метры)
-  float distanceLeft = (deltaLeft * WHEEL_CIRCUMFERENCE) / TICKS_PER_REV;
-  float distanceRight = (deltaRight * WHEEL_CIRCUMFERENCE) / TICKS_PER_REV;
+  float distanceLeft = (deltaLeft * WHEEL_CIRCUMFERENCE) / LEFT_TICKS_PER_REV;
+  float distanceRight = (deltaRight * WHEEL_CIRCUMFERENCE) / RIGHT_TICKS_PER_REV;
+
 
   // Вычисляем среднее пройденное расстояние
   float deltaDistance = (distanceLeft + distanceRight) / 2.0;
