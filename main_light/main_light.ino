@@ -2,14 +2,14 @@
 #include <VL53L0X.h>
 #include <Servo.h>
 // Для PROGMEM
-#include <avr/pgmspace.h> 
+#include <avr/pgmspace.h>
 
 // =========================
 // ПИНЫ
 // =========================
 #define SDA_PIN A4
 #define SCL_PIN A5
-#define XSHUT_LEFT  A2
+#define XSHUT_LEFT A2
 #define XSHUT_RIGHT A3
 #define SERVO_PIN 9
 #define BUTTON_PIN_1 12
@@ -18,7 +18,7 @@
 // =========================
 // АДРЕСА ДАТЧИКОВ
 // =========================
-#define VL53_ADDR_LEFT  0x30
+#define VL53_ADDR_LEFT 0x30
 #define VL53_ADDR_RIGHT 0x29
 
 // =========================
@@ -39,8 +39,8 @@
 #define MIN_DISTANCE_MM 200
 #define VL53_INTERVAL_MS 100
 #define BUTTON_INTERVAL_MS 100
-#define START_DELAY_MS 85000  // 85 секунд ожидания перед началом движения
-#define TOTAL_RUN_TIME_MS 100000 // 100 секунд на весь боевой режим (включая ожидание)
+#define START_DELAY_MS 85000      // 85 секунд ожидания перед началом движения
+#define TOTAL_RUN_TIME_MS 100000  // 100 секунд на весь боевой режим (включая ожидание)
 #define SERIAL_BAUD_RATE 115200
 
 // =========================
@@ -62,7 +62,7 @@ int button1Value = 0;
 int button2Value = 0;
 int prevButton1Value = 0;
 int button1StateChangeCount = 0;
-bool button1Toggle = false; // False = синяя сторона, True = желтая сторона
+bool button1Toggle = false;  // False = синяя сторона, True = желтая сторона
 
 int sensorArray[3];
 
@@ -72,34 +72,34 @@ unsigned long lastButtonUpdate = 0;
 // =========================
 // МАРШРУТ И СОСТОЯНИЕ
 // =========================
-enum ActionState { 
-    IDLE,               
-    WAIT_START_DELAY,   
-    GO_FORWARD,         
-    TURN,
-    DO_ACTION,
-    WAIT_RELEASE,
-    TIMEOUT             
+enum ActionState {
+  IDLE,
+  WAIT_START_DELAY,
+  GO_FORWARD,
+  TURN,
+  DO_ACTION,
+  WAIT_RELEASE,
+  TIMEOUT
 };
 ActionState actionState = IDLE;
-unsigned long actionStartTime = 0; 
-unsigned long battleModeStartTime = 0; 
+unsigned long actionStartTime = 0;
+unsigned long battleModeStartTime = 0;
 
 // --- Определение маршрутов в PROGMEM ---
 const int BLUE_ROUTE_STEPS = 4;
-const unsigned long blueRouteTiming[BLUE_ROUTE_STEPS] PROGMEM = {5000, 500, 3000, 1000};
-const int blueRouteMotorL[BLUE_ROUTE_STEPS] PROGMEM = {MOTOR_SPEED, -MOTOR_TURN_SPEED, MOTOR_SPEED, 0};
-const int blueRouteMotorR[BLUE_ROUTE_STEPS] PROGMEM = {MOTOR_SPEED, MOTOR_TURN_SPEED, MOTOR_SPEED, 0};
-const int blueRouteServo[BLUE_ROUTE_STEPS] PROGMEM = {-1, -1, -1, 90};
+const unsigned long blueRouteTiming[BLUE_ROUTE_STEPS] PROGMEM = { 5000, 500, 3000, 1000 };
+const int blueRouteMotorL[BLUE_ROUTE_STEPS] PROGMEM = { MOTOR_SPEED, -MOTOR_TURN_SPEED, MOTOR_SPEED, 0 };
+const int blueRouteMotorR[BLUE_ROUTE_STEPS] PROGMEM = { MOTOR_SPEED, MOTOR_TURN_SPEED, MOTOR_SPEED, 0 };
+const int blueRouteServo[BLUE_ROUTE_STEPS] PROGMEM = { -1, -1, -1, 90 };
 
 const int YELLOW_ROUTE_STEPS = 5;
-const unsigned long yellowRouteTiming[YELLOW_ROUTE_STEPS] PROGMEM = {3000, 800, 2000, 600, 2000};
-const int yellowRouteMotorL[YELLOW_ROUTE_STEPS] PROGMEM = {MOTOR_SPEED, -MOTOR_TURN_SPEED, MOTOR_SPEED, MOTOR_TURN_SPEED, 0};
-const int yellowRouteMotorR[YELLOW_ROUTE_STEPS] PROGMEM = {MOTOR_SPEED, MOTOR_TURN_SPEED, MOTOR_SPEED, -MOTOR_TURN_SPEED, 0};
-const int yellowRouteServo[YELLOW_ROUTE_STEPS] PROGMEM = {-1, -1, 90, -1, 0};
+const unsigned long yellowRouteTiming[YELLOW_ROUTE_STEPS] PROGMEM = { 3000, 800, 2000, 600, 2000 };
+const int yellowRouteMotorL[YELLOW_ROUTE_STEPS] PROGMEM = { MOTOR_SPEED, -MOTOR_TURN_SPEED, MOTOR_SPEED, MOTOR_TURN_SPEED, 0 };
+const int yellowRouteMotorR[YELLOW_ROUTE_STEPS] PROGMEM = { MOTOR_SPEED, MOTOR_TURN_SPEED, MOTOR_SPEED, -MOTOR_TURN_SPEED, 0 };
+const int yellowRouteServo[YELLOW_ROUTE_STEPS] PROGMEM = { -1, -1, 90, -1, 0 };
 
 int currentRouteStep = 0;
-int totalStepsInCurrentRoute = 0; // Будет установлено при старте маршрута
+int totalStepsInCurrentRoute = 0;  // Будет установлено при старте маршрута
 
 // Указатели на используемые массивы маршрута (в PROGMEM)
 PGM_P activeRouteTiming;
@@ -207,11 +207,11 @@ void updateVL53() {
 // ФУНКЦИИ ДЛЯ ЧТЕНИЯ ДАННЫХ ИЗ PROGMEM
 // =========================
 inline unsigned long pgm_read_route_timing(PGM_P addr, int index) {
-    return pgm_read_dword_near(addr + index * sizeof(unsigned long));
+  return pgm_read_dword_near(addr + index * sizeof(unsigned long));
 }
 
 inline int pgm_read_route_int(const int* addr, int index) {
-    return pgm_read_word_near(addr + index * sizeof(int));
+  return pgm_read_word_near(addr + index * sizeof(int));
 }
 
 // =========================
@@ -240,6 +240,9 @@ void setup() {
   initVL53();
 }
 
+// =========================
+// LOOP
+// =========================
 // =========================
 // LOOP
 // =========================
@@ -284,7 +287,7 @@ void loop() {
     case IDLE:
       stopMotors();
       actionServo.write(0);  // Серво спрятана
-      
+
       if (button2Value == 1) {
         battleModeStartTime = currentTime;
         Serial.print(F("BATTLE MODE STARTED - Side: "));
@@ -297,74 +300,55 @@ void loop() {
     case WAIT_START_DELAY:
       stopMotors();
       actionServo.write(0);
-      
+
       if (currentTime - actionStartTime >= START_DELAY_MS) {
-          Serial.println(F("Start delay over, beginning route execution."));
-          if (button1Toggle) {
-            // Желтая сторона - указатели на PROGMEM
-            activeRouteTiming = (PGM_P)yellowRouteTiming;
-            activeRouteMotorL = yellowRouteMotorL;
-            activeRouteMotorR = yellowRouteMotorR;
-            activeRouteServo = yellowRouteServo;
-            totalStepsInCurrentRoute = YELLOW_ROUTE_STEPS;
-          } else {
-            // Синяя сторона - указатели на PROGMEM
-            activeRouteTiming = (PGM_P)blueRouteTiming;
-            activeRouteMotorL = blueRouteMotorL;
-            activeRouteMotorR = blueRouteMotorR;
-            activeRouteServo = blueRouteServo;
-            totalStepsInCurrentRoute = BLUE_ROUTE_STEPS;
-          }
-          
-          actionState = GO_FORWARD;
-          actionStartTime = currentTime;
-          currentRouteStep = 0;
+        Serial.println(F("Start delay over, beginning route execution."));
+        if (button1Toggle) {
+          // Желтая сторона - указатели на PROGMEM
+          activeRouteTiming = (PGM_P)yellowRouteTiming;
+          activeRouteMotorL = yellowRouteMotorL;
+          activeRouteMotorR = yellowRouteMotorR;
+          activeRouteServo = yellowRouteServo;
+          totalStepsInCurrentRoute = YELLOW_ROUTE_STEPS;
+        } else {
+          // Синяя сторона - указатели на PROGMEM
+          activeRouteTiming = (PGM_P)blueRouteTiming;
+          activeRouteMotorL = blueRouteMotorL;
+          activeRouteMotorR = blueRouteMotorR;
+          activeRouteServo = blueRouteServo;
+          totalStepsInCurrentRoute = BLUE_ROUTE_STEPS;
+        }
+
+        actionState = GO_FORWARD;
+        actionStartTime = currentTime;
+        currentRouteStep = 0;
       }
-      
+
       if (currentTime - battleModeStartTime >= TOTAL_RUN_TIME_MS) {
-          Serial.println(F("Total run time expired while waiting for start delay."));
-          actionState = TIMEOUT;
-          stopMotors();
-          actionServo.write(0);
+        Serial.println(F("Total run time expired while waiting for start delay."));
+        actionState = TIMEOUT;
+        stopMotors();
+        actionServo.write(0);
       }
       break;
 
-   // --- В loop(), замените блок switch (actionState) начиная с case GO_FORWARD ---
-   // --- В loop(), замените блок case WAIT_RELEASE: ---
-    case WAIT_RELEASE:
-      // Проверяем, нужно ли выполнить действия при входе в состояние (один раз)
-      static bool enteredWaitRelease = false; // Статическая переменная для отслеживания входа
-      if (!enteredWaitRelease) {
-        Serial.println(F("Entered WAIT_RELEASE: Motors Stopped, Waiting for Button 2 Release.")); // Отладочное сообщение
-        stopMotors(); // Остановка моторов при входе
-        actionServo.write(90);  // Серво поднята после маршрута
-        enteredWaitRelease = true; // Помечаем, что вошли
-      }
-
-      // Проверяем, отпущена ли кнопка 2
-      if (button2Value == 0) {
-        Serial.println(F("Button 2 released, returning to IDLE.")); // Сообщение при выходе
-        actionServo.write(0);  // Спрячем серво
-        actionState = IDLE;
-        enteredWaitRelease = false; // Сбрасываем флаг для следующего цикла
-      }
-      // ВАЖНО: Нет break; здесь, если нужно, чтобы логика ожидания выполнялась каждый цикл.
-      // Но если stopMotors и servo_write происходят только при входе, и дальше просто проверка кнопки,
-      // то break; нужен, чтобы выйти из switch и не зацепить другие case в том же loop().
-      // Однако, так как в Arduino loop() всё равно повторяется, и switch будет вызываться снова,
-      // break; здесь не принципиален, если внутри нет циклов. Но для ясности и безопасности добавим.
-      break; 
-    case GO_FORWARD: // Это состояние теперь обрабатывает все этапы маршрута
+    case GO_FORWARD:  // Это состояние теперь обрабатывает все этапы маршрута
     case TURN:
     case DO_ACTION:
 
       // Проверяем таймаут боевого режима (включая выполнение маршрута)
       if (currentTime - battleModeStartTime >= TOTAL_RUN_TIME_MS) {
-          Serial.println(F("Total run time expired during route execution."));
-          actionState = TIMEOUT; // Переход в состояние таймаута
-          stopMotors();
+        Serial.println(F("Total run time expired during route execution."));
+        actionState = TIMEOUT;  // Переход в состояние таймаута
+        stopMotors();
+        actionServo.write(0);
+        while (1) {
+          delay(1000);
           actionServo.write(0);
-          break; // Важно выйти из switch, чтобы остальная логика не выполнялась
+          delay(1000);
+          actionServo.write(90);
+        }
+        break;  // Важно выйти из switch, чтобы остальная логика не выполнялась
       }
 
       // Проверяем препятствия
@@ -378,64 +362,116 @@ void loop() {
       // Более точная проверка: если можно двигаться, проверяем время.
       // Если нельзя, просто останавливаем моторы и НЕ обновляем время начала шага.
       if (canDrive) {
-          // Робот может двигаться, проверяем, не истекло ли время текущего этапа
-          if (currentTime - actionStartTime >= pgm_read_route_timing(activeRouteTiming, currentRouteStep)) {
-            currentRouteStep++;
-            if (currentRouteStep >= totalStepsInCurrentRoute) {
-              // Маршрут завершен, переходим в ожидание отпускания кнопки
-              actionState = WAIT_RELEASE;
-              Serial.println(F("Route completed, waiting for button release."));
-            } else {
-              // Переходим на следующий этап маршрута
-              actionStartTime = currentTime; // Время обновляется только при переходе к новому шагу
-            }
+        // Робот может двигаться, проверяем, не истекло ли время текущего этапа
+        if (currentTime - actionStartTime >= pgm_read_route_timing(activeRouteTiming, currentRouteStep)) {
+          currentRouteStep++;
+          if (currentRouteStep >= totalStepsInCurrentRoute) {
+            // Маршрут завершен, переходим в ожидание отпускания кнопки
+            actionState = WAIT_RELEASE;
+            Serial.println(F("Route completed, waiting for button release."));
+          } else {
+            // Переходим на следующий этап маршрута
+            actionStartTime = currentTime;  // Время обновляется только при переходе к новому шагу
           }
+        }
 
-          // Выполняем действия для текущего шага (движение, серва), если можно двигаться
-          int speedL = pgm_read_route_int(activeRouteMotorL, currentRouteStep);
-          int speedR = pgm_read_route_int(activeRouteMotorR, currentRouteStep);
+        // Выполняем действия для текущего шага (движение, серва), если можно двигаться
+        int speedL = pgm_read_route_int(activeRouteMotorL, currentRouteStep);
+        int speedR = pgm_read_route_int(activeRouteMotorR, currentRouteStep);
 
-          setMotorSpeed(MOTOR_LEFT_IN1, MOTOR_LEFT_PWM, speedL);
-          setMotorSpeed(MOTOR_RIGHT_IN1, MOTOR_RIGHT_PWM, speedR);
+        setMotorSpeed(MOTOR_LEFT_IN1, MOTOR_LEFT_PWM, speedL);
+        setMotorSpeed(MOTOR_RIGHT_IN1, MOTOR_RIGHT_PWM, speedR);
 
-          int servo_pos = pgm_read_route_int(activeRouteServo, currentRouteStep);
-          if (servo_pos >= 0) {
-            actionServo.write(servo_pos);
-          }
+        int servo_pos = pgm_read_route_int(activeRouteServo, currentRouteStep);
+        if (servo_pos >= 0) {
+          actionServo.write(servo_pos);
+        }
       } else {
-          // Препятствие! Стоим на месте.
-          // ВАЖНО: НЕ обновляем actionStartTime, чтобы таймер шага "заморозился".
-          // Следующий шаг начнётся сразу после того, как исчезнет препятствие.
-          stopMotors();
-          // Дополнительно: можно оставить серву в текущем положении или изменить (по желанию).
-          // actionServo.write(...); // <-- При необходимости добавьте сюда команду для сервы при остановке.
-          Serial.println(F("Obstacle detected, pausing route timer.")); // Для отладки
+        // Препятствие! Стоим на месте.
+        // ВАЖНО: НЕ обновляем actionStartTime, чтобы таймер шага "заморозился".
+        // Следующий шаг начнётся сразу после того, как исчезнет препятствие.
+        stopMotors();
+        // Дополнительно: можно оставить серву в текущем положении или изменить (по желанию).
+        // actionServo.write(...); // <-- При необходимости добавьте сюда команду для сервы при остановке.
+        Serial.println(F("Obstacle detected, pausing route timer."));  // Для отладки
       }
       // --- Конец новой логики ---
-      break; // Конец case GO_FORWARD / TURN / DO_ACTION
+      break;  // Конец case GO_FORWARD / TURN / DO_ACTION
+
+    case WAIT_RELEASE:
+      // Проверяем, нужно ли выполнить действия при входе в состояние (один раз)
+      static bool enteredWaitRelease = false;  // Статическая переменная для отслеживания входа
+      if (!enteredWaitRelease) {
+        Serial.println(F("Entered WAIT_RELEASE: Motors Stopped, Waiting for Button 2 Release."));  // Отладочное сообщение
+        stopMotors();                                                                              // Остановка моторов при входе
+        actionServo.write(90);                                                                     // Серво поднята после маршрута
+        enteredWaitRelease = true;                                                                 // Помечаем, что вошли
+      }
+
+      // Проверяем, отпущена ли кнопка 2
+      if (button2Value == 0) {
+        Serial.println(F("Button 2 released, returning to IDLE."));  // Сообщение при выходе
+        actionServo.write(0);                                        // Спрячем серво
+        actionState = IDLE;
+        enteredWaitRelease = false;  // Сбрасываем флаг для следующего цикла
+      }
+      // НЕ ставим break; здесь, чтобы после отпускания кнопки (или если она сразу была отпущена)
+      // управление перешло к следующему case - TIMEOUT, и запустился бы while(1) flutter.
+      // Если кнопка НЕ отпущена, break; не сработает, и loop() начнётся заново.
+      // Если кнопка ОТПУЩЕНА, break; не сработает, и управление пойдёт к следующему case.
+
+    case TIMEOUT:
+      // Остановка моторов и сервы при входе в финальное состояние
+      stopMotors();
+      actionServo.write(0);
+      Serial.println(F("Entering final flutter mode."));
+
+      // Бесконечный цикл дёргания сервы
+      static unsigned long lastFlutterTime = millis();  // Статическая переменная для отслеживания времени внутри while
+      static bool flutterPos = false;                   // Статическая переменная для переключения позиции внутри while
+      const unsigned long flutterInterval = 200;        // Интервал дёргания в миллисекундах
+
+      while (1) {                      // Бесконечный цикл
+        unsigned long now = millis();  // Локальная переменная для текущего времени в while
+        if (now - lastFlutterTime >= flutterInterval) {
+          actionServo.write(flutterPos ? 90 : 0);  // Переключаем позицию
+          flutterPos = !flutterPos;                // Переключаем флаг
+          lastFlutterTime = now;                   // Обновляем время последнего движения
+        }
+        // delay(10); // Небольшая задержка внутри while для стабильности, при желании
+      }
+      // Этот break; unreachable, но компилятор может ругаться, если его не поставить.
+      // break;
   }
 
-  // Логирование
-  Serial.print(F("State: "));
-  switch (actionState) {
-    case IDLE: Serial.print(F("IDLE")); break;
-    case WAIT_START_DELAY: Serial.print(F("WAIT_START")); break;
-    case GO_FORWARD: Serial.print(F("GO")); break;
-    case TURN: Serial.print(F("TURN")); break;
-    case DO_ACTION: Serial.print(F("ACTION")); break;
-    case WAIT_RELEASE: Serial.print(F("WAIT_REL")); break;
-    case TIMEOUT: Serial.print(F("TIMEOUT")); break;
+  // Логирование (это выполняется только если actionState != TIMEOUT, т.к. в TIMEOUT while(1))
+  // Если хочется логировать и в финальном состоянии, нужно вынести логику логирования
+  // в каждый case отдельно или завернуть в условие if (actionState != TIMEOUT) { ... }
+  // Для простоты, логирование оставлено как есть - оно не будет выполняться после входа в while(1).
+  if (actionState != TIMEOUT) {
+    Serial.print(F("State: "));
+    switch (actionState) {
+      case IDLE: Serial.print(F("IDLE")); break;
+      case WAIT_START_DELAY: Serial.print(F("WAIT_START")); break;
+      case GO_FORWARD: Serial.print(F("GO")); break;
+      case TURN: Serial.print(F("TURN")); break;
+      case DO_ACTION: Serial.print(F("ACTION")); break;
+      case WAIT_RELEASE:
+        Serial.print(F("WAIT_REL"));
+        break;
+        // TIMEOUT не будет выведено из-за условия if
+    }
+    Serial.print(F(" | Time: "));
+    Serial.print((currentTime - battleModeStartTime) / 1000.0, 1);
+    Serial.print(F("s/"));
+    Serial.print(TOTAL_RUN_TIME_MS / 1000.0, 1);
+    Serial.print(F("s | Can drive: "));
+    Serial.print(sensorArray[0]);
+    Serial.print(F(" | B1: "));
+    Serial.print(sensorArray[1]);
+    Serial.print(F(" | B2: "));
+    Serial.println(sensorArray[2]);
   }
-  Serial.print(F(" | Time: "));
-  Serial.print((currentTime - battleModeStartTime) / 1000.0, 1);
-  Serial.print(F("s/"));
-  Serial.print(TOTAL_RUN_TIME_MS / 1000.0, 1);
-  Serial.print(F("s | Can drive: "));
-  Serial.print(sensorArray[0]);
-  Serial.print(F(" | B1: "));
-  Serial.print(sensorArray[1]);
-  Serial.print(F(" | B2: "));
-  Serial.println(sensorArray[2]);
 
   delay(50);
 }
