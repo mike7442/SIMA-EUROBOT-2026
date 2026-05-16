@@ -34,8 +34,8 @@
 // =========================
 // ТАЙМЕРЫ
 // =========================
-#define START_DELAY_MS 5000      // 85 секунд ожидания перед маршрутом
-#define RUN_TIME_MS 20000        // 100 секунд на выполнение маршрута
+#define START_DELAY_MS 85000      // 85 секунд ожидания перед маршрутом
+#define RUN_TIME_MS 100000        // 100 секунд на выполнение маршрута
 #define LOG_INTERVAL_MS 100       // Интервал логирования
 #define BUTTON_DEBOUNCE_MS 100    // Дебаунс кнопок
 #define OBSTACLE_DIST_MM 200      // Минимальное расстояние до препятствия
@@ -166,23 +166,33 @@ void setup() {
   // =========================
   unsigned long lastLog = 0;
   bool lastB1State = false;
+  int pressCount = 0; // Счетчик нажатий
   
   while (true) {
     bool b1 = !digitalRead(BUTTON_PIN_1);
     bool b2 = !digitalRead(BUTTON_PIN_2);
     
-    // Лог только при изменении toggle
+    // Обработка изменения состояния кнопки 1
     if (b1 != lastB1State) {
-      button1Toggle = !button1Toggle;
+      if (b1) { // Только что нажали (не отпустили)
+        pressCount++; // Увеличиваем счетчик при нажатии
+        
+        // Переключаем toggle каждые 2 нажатия
+        if (pressCount % 2 == 0) {
+          button1Toggle = !button1Toggle;
+          Serial.print(F("SIDE: "));
+          Serial.println(button1Toggle ? F("YELLOW") : F("BLUE"));
+        }
+      }
       lastB1State = b1;
-      Serial.print(F("SIDE: "));
-      Serial.println(button1Toggle ? F("YELLOW") : F("BLUE"));
     }
     
     // Статус раз в 100мс
     if (millis() - lastLog >= LOG_INTERVAL_MS) {
       Serial.print(F("Wait B2 | Side: "));
-      Serial.println(button1Toggle ? F("Y") : F("B"));
+      Serial.print(button1Toggle ? F("Y") : F("B"));
+      Serial.print(F(" | Presses: "));
+      Serial.println(pressCount);
       lastLog = millis();
     }
     
