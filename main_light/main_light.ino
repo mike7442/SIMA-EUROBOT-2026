@@ -28,7 +28,7 @@
 #define MOTOR_RIGHT_IN1 7
 #define MOTOR_RIGHT_PWM 6
 
-#define L_MOTOR_SPEED 200
+#define R_MOTOR_SPEED 200
 #define MOTOR_TURN_SPEED 150
 
 // =========================
@@ -39,7 +39,7 @@
 
 // Рассчитываем скорости для правого колеса, чтобы оно вращалось пропорционально
 // Для линейного движения: правое колесо должно вращаться медленнее
-#define R_MOTOR_SPEED ((int)(L_MOTOR_SPEED * 1.0 * LEFT_TICKS_PER_REV / RIGHT_TICKS_PER_REV))
+#define L_MOTOR_SPEED ((int)(R_MOTOR_SPEED * 1.0 * LEFT_TICKS_PER_REV / RIGHT_TICKS_PER_REV))
 // #define MOTOR_TURN_SPEED ((int)(MOTOR_TURN_SPEED * 1.0 * LEFT_TICKS_PER_REV / RIGHT_TICKS_PER_REV));
 
 // =========================
