@@ -178,7 +178,7 @@ void setup() {
         pressCount++; // Увеличиваем счетчик при нажатии
         
         // Переключаем toggle каждые 2 нажатия
-        if (pressCount % 2 == 0) {
+        if (pressCount % 1 == 0) {
           button1Toggle = !button1Toggle;
           Serial.print(F("SIDE: "));
           Serial.println(button1Toggle ? F("YELLOW") : F("BLUE"));
