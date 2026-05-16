@@ -28,14 +28,25 @@
 #define MOTOR_RIGHT_IN1 7
 #define MOTOR_RIGHT_PWM 6
 
-#define MOTOR_SPEED 200
+#define L_MOTOR_SPEED 200
 #define MOTOR_TURN_SPEED 150
+
+// =========================
+// КОРРЕКЦИЯ РАЗНИЦЫ РЕДУКТОРОВ
+// =========================
+#define LEFT_TICKS_PER_REV 1360     // Количество импульсов на оборот колеса
+#define RIGHT_TICKS_PER_REV 1472
+
+// Рассчитываем скорости для правого колеса, чтобы оно вращалось пропорционально
+// Для линейного движения: правое колесо должно вращаться медленнее
+#define R_MOTOR_SPEED ((int)(L_MOTOR_SPEED * 1.0 * LEFT_TICKS_PER_REV / RIGHT_TICKS_PER_REV))
+// #define MOTOR_TURN_SPEED ((int)(MOTOR_TURN_SPEED * 1.0 * LEFT_TICKS_PER_REV / RIGHT_TICKS_PER_REV));
 
 // =========================
 // ТАЙМЕРЫ
 // =========================
-#define START_DELAY_MS 85000      // 85 секунд ожидания перед маршрутом
-#define RUN_TIME_MS 100000        // 100 секунд на выполнение маршрута
+#define START_DELAY_MS 5000      // 85 секунд ожидания перед маршрутом
+#define RUN_TIME_MS 20000        // 100 секунд на выполнение маршрута
 #define LOG_INTERVAL_MS 100       // Интервал логирования
 #define BUTTON_DEBOUNCE_MS 100    // Дебаунс кнопок
 #define OBSTACLE_DIST_MM 200      // Минимальное расстояние до препятствия
@@ -67,12 +78,12 @@ bool button1Toggle = false;
 const unsigned long routeTiming[MAX_STEPS] PROGMEM = {5000, 500, 3000, 1000, 0, 0};
 const int routeMotors[2][2][MAX_STEPS] PROGMEM = {
   { // SIDE_BLUE
-    { MOTOR_SPEED, -MOTOR_TURN_SPEED, MOTOR_SPEED, 0, 0, 0 },
-    { MOTOR_SPEED,  MOTOR_TURN_SPEED, MOTOR_SPEED, 0, 0, 0 }
+    { L_MOTOR_SPEED, -MOTOR_TURN_SPEED, L_MOTOR_SPEED, 0, 0, 0 }, // Левое колесо
+    { R_MOTOR_SPEED,  MOTOR_TURN_SPEED, R_MOTOR_SPEED, 0, 0, 0 } // Правое колесо
   },
   { // SIDE_YELLOW (инвертированные повороты)
-    { MOTOR_SPEED,  MOTOR_TURN_SPEED, MOTOR_SPEED, 0, 0, 0 },
-    { MOTOR_SPEED, -MOTOR_TURN_SPEED, MOTOR_SPEED, 0, 0, 0 }
+    { L_MOTOR_SPEED,  MOTOR_TURN_SPEED, L_MOTOR_SPEED, 0, 0, 0 }, // Левое колесо
+    { R_MOTOR_SPEED, -MOTOR_TURN_SPEED, R_MOTOR_SPEED, 0, 0, 0 } // Правое колесо (поворот в другую сторону)
   }
 };
 const int routeSteps[2] = {4, 4};
@@ -160,6 +171,10 @@ void setup() {
   initVL53();
   
   Serial.println(F("=== READY ==="));
+  Serial.print(F("Corrected Motor Speed: "));
+  Serial.println(L_MOTOR_SPEED);
+  Serial.print(F("Corrected Turn Speed: "));
+  Serial.println(MOTOR_TURN_SPEED);
   
   // =========================
   // ЦИКЛ 1: ОЖИДАНИЕ ЗАПУСКА
